@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared bookmarks — Freedial</title>
+  <style>
+    :root { --bg: #f4f5f7; --fg: #1f2328; --dim: #6b7280; --card: #fff; color-scheme: light dark; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #16171a; --fg: #ececef; --dim: #9aa0aa; --card: #222328; } }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 900px; margin: 0 auto; padding: 32px 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+    a.tile { display: flex; gap: 10px; align-items: center; background: var(--card); border-radius: 12px; padding: 12px; text-decoration: none; color: inherit; box-shadow: 0 1px 3px rgba(0,0,0,.08); min-width: 0; }
+    a.tile img { width: 24px; height: 24px; flex: none; }
+    a.tile span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button { font: inherit; background: #2563eb; color: #fff; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+    .hint { color: var(--dim); }
+  </style>
+</head>
+<body>
+<main>
+  <h1 id="title">Shared bookmarks</h1>
+  <p class="hint" id="count"></p>
+  <div class="grid" id="grid"></div>
+  <button id="dl" hidden>Download for Freedial</button>
+  <p class="hint">Import the file in Freedial › Preferences › System › Import. <a href="./">What is Freedial?</a></p>
+</main>
+<script>
+// The group lives after # (gzip + base64url), so it never reaches this or any server.
+(async () => {
+  const raw = location.hash.slice(1);
+  if (!raw) return (document.getElementById("count").textContent = "This link has no bookmarks in it.");
+  try {
+    const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+    const g = JSON.parse(text);
+    const dials = (g.d || []).filter(([, u]) => /^https?:\/\//i.test(u));
+    document.title = `${g.t} — shared with Freedial`;
+    document.getElementById("title").textContent = g.t;
+    document.getElementById("count").textContent = `${dials.length} bookmark${dials.length === 1 ? "" : "s"}`;
+    const grid = document.getElementById("grid");
+    for (const [t, u] of dials) {
+      const a = document.createElement("a");
+      a.className = "tile"; a.href = u; a.rel = "noopener nofollow";
+      const img = document.createElement("img");
+      img.alt = ""; img.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(new URL(u).origin)}`;
+      const s = document.createElement("span"); s.textContent = t || u;
+      a.append(img, s); grid.append(a);
+    }
+    const dl = document.getElementById("dl");
+    dl.hidden = false;
+    dl.onclick = () => {
+      const data = { app: "freedial", version: 1, groups: [{ title: g.t, dials: dials.map(([title, url]) => ({ title, url })) }] };
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+      a.download = `${g.t.replace(/[^\w-]+/g, "-")}.freedial.json`;
+      a.click();
+    };
+  } catch {
+    document.getElementById("count").textContent = "This share link is damaged — ask for it again.";
+  }
+})();
+</script>
+</body>
+</html>
